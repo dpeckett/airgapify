@@ -25,5 +25,5 @@ go.work
 .idea/
 .vscode/
 
-# Configuration bundles (these will be generated via CI)
-bundle/
+# Outputs
+/images.txt

@@ -84,7 +84,7 @@ func main() {
 
 			images := sets.New[string]()
 			for _, obj := range objects {
-				objImages, err := extractImages(&obj)
+				objImages, err := extractImages(logger, &obj)
 				if err != nil {
 					return fmt.Errorf("failed to find image references: %w", err)
 				}
@@ -94,7 +94,9 @@ func main() {
 				}
 			}
 
-			logger.Info("Found image references", zap.Int("count", images.Len()))
+			if images.Len() > 0 {
+				logger.Info("Found image references", zap.Int("count", images.Len()))
+			}
 
 			outputPath := cCtx.String("output")
 
@@ -189,10 +191,12 @@ func loadObjectsFromYAML(yamlPath string) ([]unstructured.Unstructured, error) {
 	return objects, nil
 }
 
-func extractImages(obj *unstructured.Unstructured) (sets.Set[string], error) {
+func extractImages(logger *zap.Logger, obj *unstructured.Unstructured) (sets.Set[string], error) {
 	switch obj.GetAPIVersion() {
 	case "v1":
 		if obj.GetKind() == "Pod" {
+			logger.Info("Found pod", zap.String("name", obj.GetName()))
+
 			var pod corev1.Pod
 			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &pod)
 			if err != nil {
@@ -204,6 +208,8 @@ func extractImages(obj *unstructured.Unstructured) (sets.Set[string], error) {
 	case "apps/v1":
 		switch obj.GetKind() {
 		case "Deployment":
+			logger.Info("Found deployment", zap.String("name", obj.GetName()))
+
 			var deploy v1.Deployment
 			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &deploy)
 			if err != nil {
@@ -212,6 +218,8 @@ func extractImages(obj *unstructured.Unstructured) (sets.Set[string], error) {
 
 			return extractImagesFromPodSpec(&deploy.Spec.Template.Spec), nil
 		case "ReplicaSet":
+			logger.Info("Found replica set", zap.String("name", obj.GetName()))
+
 			var rs v1.ReplicaSet
 			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &rs)
 			if err != nil {
@@ -220,6 +228,8 @@ func extractImages(obj *unstructured.Unstructured) (sets.Set[string], error) {
 
 			return extractImagesFromPodSpec(&rs.Spec.Template.Spec), nil
 		case "StatefulSet":
+			logger.Info("Found stateful set", zap.String("name", obj.GetName()))
+
 			var sts v1.StatefulSet
 			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &sts)
 			if err != nil {
@@ -228,6 +238,8 @@ func extractImages(obj *unstructured.Unstructured) (sets.Set[string], error) {
 
 			return extractImagesFromPodSpec(&sts.Spec.Template.Spec), nil
 		case "DaemonSet":
+			logger.Info("Found daemon set", zap.String("name", obj.GetName()))
+
 			var ds v1.DaemonSet
 			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &ds)
 			if err != nil {
@@ -239,6 +251,8 @@ func extractImages(obj *unstructured.Unstructured) (sets.Set[string], error) {
 	case "batch/v1":
 		switch obj.GetKind() {
 		case "Job":
+			logger.Info("Found job", zap.String("name", obj.GetName()))
+
 			var job batchv1.Job
 			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &job)
 			if err != nil {
@@ -247,6 +261,8 @@ func extractImages(obj *unstructured.Unstructured) (sets.Set[string], error) {
 
 			return extractImagesFromPodSpec(&job.Spec.Template.Spec), nil
 		case "CronJob":
+			logger.Info("Found cron job", zap.String("name", obj.GetName()))
+
 			var cron batchv1.CronJob
 			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &cron)
 			if err != nil {
@@ -257,6 +273,8 @@ func extractImages(obj *unstructured.Unstructured) (sets.Set[string], error) {
 		}
 	case "airgapify.gpu-ninja.com/v1alpha1":
 		if obj.GetKind() == "Config" {
+			logger.Info("Found airgapify config")
+
 			var config airgapifyv1alpha1.Config
 			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &config)
 			if err != nil {
@@ -264,6 +282,33 @@ func extractImages(obj *unstructured.Unstructured) (sets.Set[string], error) {
 			}
 
 			return sets.New[string](config.Spec.Images...), nil
+		}
+	case "ceph.rook.io/v1":
+		if obj.GetKind() == "CephCluster" {
+			logger.Info("Found ceph cluster", zap.String("name", obj.GetName()))
+
+			image, _, _ := unstructured.NestedString(obj.Object, "spec", "cephVersion", "image")
+			if image != "" {
+				return sets.New[string](image), nil
+			}
+		}
+	case "dex.gpu-ninja.com/v1alpha1":
+		if obj.GetKind() == "DexIdentityProvider" {
+			logger.Info("Found dex identity provider", zap.String("name", obj.GetName()))
+
+			image, _, _ := unstructured.NestedString(obj.Object, "spec", "image")
+			if image != "" {
+				return sets.New[string](image), nil
+			}
+		}
+	case "ldap.gpu-ninja.com/v1alpha1":
+		if obj.GetKind() == "LDAPDirectory" {
+			logger.Info("Found ldap directory", zap.String("name", obj.GetName()))
+
+			image, _, _ := unstructured.NestedString(obj.Object, "spec", "image")
+			if image != "" {
+				return sets.New[string](image), nil
+			}
 		}
 	}
 
