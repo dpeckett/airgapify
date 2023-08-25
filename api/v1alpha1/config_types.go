@@ -27,7 +27,8 @@ type ConfigSpec struct {
 
 // +kubebuilder:object:root=true
 type Config struct {
-	metav1.TypeMeta `json:",inline"`
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec ConfigSpec `json:"spec"`
 }

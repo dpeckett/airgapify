@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-// Package v1alpha1 contains API Schema definitions for the virt-disk v1alpha1 API group
 // +kubebuilder:object:generate=true
 // +groupName=airgapify.gpu-ninja.com
 package v1alpha1

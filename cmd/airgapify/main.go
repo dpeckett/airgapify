@@ -273,7 +273,7 @@ func extractImages(logger *zap.Logger, obj *unstructured.Unstructured) (sets.Set
 		}
 	case "airgapify.gpu-ninja.com/v1alpha1":
 		if obj.GetKind() == "Config" {
-			logger.Info("Found airgapify config")
+			logger.Info("Found airgapify config", zap.String("name", obj.GetName()))
 
 			var config airgapifyv1alpha1.Config
 			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &config)

@@ -11,7 +11,7 @@ $(LOCALBIN)/airgapify: $(LOCALBIN) $(SRCS)
 
 generate: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
-	$(CONTROLLER_GEN) crd output:crd:artifacts:config=deploy paths="./..."
+	$(CONTROLLER_GEN) crd output:crd:artifacts:config=dist paths="./api/..."
 
 tidy:
 	go mod tidy

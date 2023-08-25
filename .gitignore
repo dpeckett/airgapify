@@ -25,5 +25,8 @@ go.work
 .idea/
 .vscode/
 
+# Generated files
+/dist
+
 # Outputs
 /images.txt

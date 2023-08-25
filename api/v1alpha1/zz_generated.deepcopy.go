@@ -30,6 +30,7 @@ import (
 func (in *Config) DeepCopyInto(out *Config) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
+	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 	in.Spec.DeepCopyInto(&out.Spec)
 }
 

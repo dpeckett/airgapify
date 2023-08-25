@@ -42,16 +42,18 @@ jobs:
 
     - name: Build
       run: |
+        make generate
+        mv dist/airgapify.gpu-ninja.com_configs.yaml dist/crd.yaml
+        
         mkdir -p bin
         GOOS=linux GOARCH=amd64 go build -o bin/airgapify-linux-amd64 cmd/airgapify/main.go
         GOOS=linux GOARCH=arm64 go build -o bin/airgapify-linux-arm64 cmd/airgapify/main.go
-        cp deploy/airgapify.gpu-ninja.com_configs.yaml deploy/crd.yaml
 
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          deploy/crd.yaml
+          dist/*
           bin/airgapify*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
