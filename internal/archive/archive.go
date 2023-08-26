@@ -20,7 +20,6 @@ package archive
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/cheggaaa/pb/v3"
@@ -35,8 +34,8 @@ import (
 )
 
 type Options struct {
-	Compressed *bool
-	Platform   *v1.Platform
+	DisableProgress bool
+	Platform        *v1.Platform
 }
 
 // Create creates a Docker image archive from a set of image references.
@@ -73,24 +72,25 @@ func Create(ctx context.Context, logger *zap.Logger, outputPath string, images s
 	}
 	defer f.Close()
 
-	var w io.Writer = f
+	w, err := zstd.NewWriter(f)
+	if err != nil {
+		return fmt.Errorf("failed to create zstd writer: %w", err)
+	}
+	defer w.Close()
 
-	if opts.Compressed == nil || (opts.Compressed != nil && *opts.Compressed) {
-		w, err := zstd.NewWriter(f)
-		if err != nil {
-			return fmt.Errorf("failed to create zstd writer: %w", err)
-		}
-
-		defer w.Close()
+	var progressCh chan v1.Update
+	if !opts.DisableProgress {
+		progressCh = progressBar()
 	}
 
-	progressCh := progressBar()
 	options := []tarball.WriteOption{
 		tarball.WithProgress(progressCh),
 	}
 
 	err = tarball.MultiRefWrite(refToImage, w, options...)
-	close(progressCh)
+	if progressCh != nil {
+		close(progressCh)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to write image archive: %w", err)
 	}

@@ -32,7 +32,6 @@ import (
 	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/utils/ptr"
 )
 
 func init() {
@@ -63,15 +62,14 @@ func main() {
 				Usage:   "Where to write the image archive.",
 				Value:   "images.tar.zst",
 			},
-			&cli.BoolFlag{
-				Name:  "compress",
-				Usage: "Compress the image archive using zstd.",
-				Value: true,
-			},
 			&cli.StringFlag{
 				Name:    "platform",
 				Aliases: []string{"p"},
 				Usage:   "The target platform for the image archive.",
+			},
+			&cli.BoolFlag{
+				Name:  "no-progress",
+				Usage: "Disable progress output.",
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
@@ -113,8 +111,10 @@ func main() {
 				logger.Info("Found image references", zap.Int("count", images.Len()))
 			}
 
-			options := &archive.Options{
-				Compressed: ptr.To(cCtx.Bool("compress")),
+			options := &archive.Options{}
+
+			if cCtx.IsSet("no-progress") && cCtx.Bool("no-progress") {
+				options.DisableProgress = true
 			}
 
 			if cCtx.IsSet("platform") {
