@@ -7,7 +7,7 @@ SRCS := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
 
 $(LOCALBIN)/airgapify: $(LOCALBIN) $(SRCS)
 	@mkdir -p bin
-	go build -o $@ cmd/airgapify/main.go
+	CGO_ENABLED=0 go build --ldflags '-s' -o $@ cmd/airgapify/main.go
 
 generate: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
