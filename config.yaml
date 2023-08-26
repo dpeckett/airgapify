@@ -1,0 +1,16 @@
+apiVersion: airgapify.gpu-ninja.com/v1alpha1
+kind: Config
+spec:
+  rules:
+  - apiVersion: ceph.rook.io/v1
+    kind: CephCluster
+    paths:
+    - "$.spec.cephVersion.image"
+  - apiVersion: dex.gpu-ninja.com/v1alpha1
+    kind: DexIdentityProvider
+    paths:
+    - "$.spec.image"
+  - apiVersion: ldap.gpu-ninja.com/v1alpha1
+    kind: LDAPDirectory
+    paths:
+    - "$.spec.image"

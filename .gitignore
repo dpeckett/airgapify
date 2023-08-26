@@ -28,5 +28,5 @@ go.work
 # Generated files
 /dist
 
-# Outputs
-/images.txt
+# Downloaded archives
+*.tar*

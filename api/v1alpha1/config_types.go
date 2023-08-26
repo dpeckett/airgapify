@@ -21,7 +21,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type ConfigExtractionRuleSpec struct {
+	// TypeMeta is the type of object to apply the rule to.
+	metav1.TypeMeta `json:",inline"`
+	// Paths is a list of JSON paths to extract image references from.
+	Paths []string `json:"paths"`
+}
+
 type ConfigSpec struct {
+	// Rules is a list of custom image extraction rules to apply to the manifests.
+	Rules []ConfigExtractionRuleSpec `json:"rules,omitempty"`
+	// Images is a list of additional images to include in the archive.
+	// This is useful for images that are not directly referenced in the manifests.
+	// Eg. those that are created by operators.
 	Images []string `json:"images,omitempty"`
 }
 

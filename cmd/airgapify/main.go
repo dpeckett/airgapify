@@ -18,33 +18,25 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	airgapifyv1alpha1 "github.com/gpu-ninja/airgapify/api/v1alpha1"
+	"github.com/gpu-ninja/airgapify/internal/archive"
+	"github.com/gpu-ninja/airgapify/internal/extractor"
+	"github.com/gpu-ninja/airgapify/internal/loader"
 	zaplogfmt "github.com/jsternberg/zap-logfmt"
 	"github.com/urfave/cli/v2"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/ptr"
 )
 
 func init() {
 	_ = airgapifyv1alpha1.AddToScheme(scheme.Scheme)
-	_ = corev1.AddToScheme(scheme.Scheme)
-	_ = appsv1.AddToScheme(scheme.Scheme)
-	_ = batchv1.AddToScheme(scheme.Scheme)
 }
 
 func main() {
@@ -68,50 +60,74 @@ func main() {
 			&cli.StringFlag{
 				Name:    "output",
 				Aliases: []string{"o"},
-				Usage:   "Where to write the image list.",
-				Value:   "images.txt",
+				Usage:   "Where to write the image archive.",
+				Value:   "images.tar.zst",
+			},
+			&cli.BoolFlag{
+				Name:  "compress",
+				Usage: "Compress the image archive using zstd.",
+				Value: true,
+			},
+			&cli.StringFlag{
+				Name:    "platform",
+				Aliases: []string{"p"},
+				Usage:   "The target platform for the image archive.",
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			objects, err := loadObjectsFromFiles(cCtx.StringSlice("file"))
+			objects, err := loader.LoadObjectsFromFiles(cCtx.StringSlice("file"))
 			if err != nil {
-				logger.Fatal("Failed to load objects", zap.Error(err))
-
-				return err
+				return fmt.Errorf("failed to load objects: %w", err)
 			}
 
 			logger.Info("Loaded objects", zap.Int("count", len(objects)))
 
-			images := sets.New[string]()
-			for _, obj := range objects {
-				objImages, err := extractImages(logger, &obj)
-				if err != nil {
-					return fmt.Errorf("failed to find image references: %w", err)
-				}
+			rules := extractor.DefaultRules
 
-				if objImages.Len() > 0 {
-					images = images.Union(objImages)
+			for _, obj := range objects {
+				if obj.GetAPIVersion() == "airgapify.gpu-ninja.com/v1alpha1" && obj.GetKind() == "Config" {
+					logger.Info("Found airgapify config")
+
+					var config airgapifyv1alpha1.Config
+					err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &config)
+					if err != nil {
+						return fmt.Errorf("failed to convert config: %w", err)
+					}
+
+					for _, rule := range config.Spec.Rules {
+						rules = append(rules, extractor.ImageReferenceExtractionRule{
+							TypeMeta: rule.TypeMeta,
+							Paths:    rule.Paths,
+						})
+					}
 				}
+			}
+
+			e := extractor.NewImageReferenceExtractor(rules)
+			images, err := e.ExtractImageReferences(objects)
+			if err != nil {
+				return fmt.Errorf("failed to extract image references: %w", err)
 			}
 
 			if images.Len() > 0 {
 				logger.Info("Found image references", zap.Int("count", images.Len()))
 			}
 
+			options := &archive.Options{
+				Compressed: ptr.To(cCtx.Bool("compress")),
+			}
+
+			if cCtx.IsSet("platform") {
+				options.Platform, err = v1.ParsePlatform(cCtx.String("platform"))
+				if err != nil {
+					return fmt.Errorf("failed to parse platform: %w", err)
+				}
+			}
+
 			outputPath := cCtx.String("output")
 
-			logger.Info("Writing image references to file", zap.String("path", outputPath))
-
-			f, err := os.Create(outputPath)
-			if err != nil {
-				return fmt.Errorf("failed to create images file: %w", err)
-			}
-			defer f.Close()
-
-			for image := range images {
-				if _, err := f.WriteString(image + "\n"); err != nil {
-					return fmt.Errorf("failed to write image to file: %w", err)
-				}
+			if err := archive.Create(cCtx.Context, logger, outputPath, images, options); err != nil {
+				return fmt.Errorf("failed to create image archive: %w", err)
 			}
 
 			return nil
@@ -121,210 +137,4 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		logger.Fatal("Failed to run application", zap.Error(err))
 	}
-}
-
-func loadObjectsFromFiles(files []string) ([]unstructured.Unstructured, error) {
-	var objects []unstructured.Unstructured
-
-	for _, filePath := range files {
-		fi, err := os.Stat(filePath)
-		if err != nil {
-			return nil, err
-		}
-
-		if !fi.IsDir() {
-			fileObjects, err := loadObjectsFromYAML(filePath)
-			if err != nil {
-				return nil, err
-			}
-
-			objects = append(objects, fileObjects...)
-		} else {
-			err := filepath.WalkDir(filePath, func(path string, d os.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-
-				if !d.IsDir() {
-					fileObjects, err := loadObjectsFromYAML(path)
-					if err != nil {
-						return err
-					}
-
-					objects = append(objects, fileObjects...)
-				}
-
-				return nil
-			})
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	return objects, nil
-}
-
-func loadObjectsFromYAML(yamlPath string) ([]unstructured.Unstructured, error) {
-	objectsYAML, err := os.ReadFile(yamlPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var objects []unstructured.Unstructured
-
-	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(objectsYAML), 1000000)
-	for {
-		var obj map[string]any
-		if err := decoder.Decode(&obj); err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			return nil, err
-		}
-
-		unstrObj := unstructured.Unstructured{Object: obj}
-		objects = append(objects, unstrObj)
-	}
-
-	return objects, nil
-}
-
-func extractImages(logger *zap.Logger, obj *unstructured.Unstructured) (sets.Set[string], error) {
-	switch obj.GetAPIVersion() {
-	case "v1":
-		if obj.GetKind() == "Pod" {
-			logger.Info("Found pod", zap.String("name", obj.GetName()))
-
-			var pod corev1.Pod
-			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &pod)
-			if err != nil {
-				return nil, err
-			}
-
-			return extractImagesFromPodSpec(&pod.Spec), nil
-		}
-	case "apps/v1":
-		switch obj.GetKind() {
-		case "Deployment":
-			logger.Info("Found deployment", zap.String("name", obj.GetName()))
-
-			var deploy v1.Deployment
-			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &deploy)
-			if err != nil {
-				return nil, err
-			}
-
-			return extractImagesFromPodSpec(&deploy.Spec.Template.Spec), nil
-		case "ReplicaSet":
-			logger.Info("Found replica set", zap.String("name", obj.GetName()))
-
-			var rs v1.ReplicaSet
-			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &rs)
-			if err != nil {
-				return nil, err
-			}
-
-			return extractImagesFromPodSpec(&rs.Spec.Template.Spec), nil
-		case "StatefulSet":
-			logger.Info("Found stateful set", zap.String("name", obj.GetName()))
-
-			var sts v1.StatefulSet
-			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &sts)
-			if err != nil {
-				return nil, err
-			}
-
-			return extractImagesFromPodSpec(&sts.Spec.Template.Spec), nil
-		case "DaemonSet":
-			logger.Info("Found daemon set", zap.String("name", obj.GetName()))
-
-			var ds v1.DaemonSet
-			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &ds)
-			if err != nil {
-				return nil, err
-			}
-
-			return extractImagesFromPodSpec(&ds.Spec.Template.Spec), nil
-		}
-	case "batch/v1":
-		switch obj.GetKind() {
-		case "Job":
-			logger.Info("Found job", zap.String("name", obj.GetName()))
-
-			var job batchv1.Job
-			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &job)
-			if err != nil {
-				return nil, err
-			}
-
-			return extractImagesFromPodSpec(&job.Spec.Template.Spec), nil
-		case "CronJob":
-			logger.Info("Found cron job", zap.String("name", obj.GetName()))
-
-			var cron batchv1.CronJob
-			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &cron)
-			if err != nil {
-				return nil, err
-			}
-
-			return extractImagesFromPodSpec(&cron.Spec.JobTemplate.Spec.Template.Spec), nil
-		}
-	case "airgapify.gpu-ninja.com/v1alpha1":
-		if obj.GetKind() == "Config" {
-			logger.Info("Found airgapify config", zap.String("name", obj.GetName()))
-
-			var config airgapifyv1alpha1.Config
-			err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &config)
-			if err != nil {
-				return nil, err
-			}
-
-			return sets.New[string](config.Spec.Images...), nil
-		}
-	case "ceph.rook.io/v1":
-		if obj.GetKind() == "CephCluster" {
-			logger.Info("Found ceph cluster", zap.String("name", obj.GetName()))
-
-			image, _, _ := unstructured.NestedString(obj.Object, "spec", "cephVersion", "image")
-			if image != "" {
-				return sets.New[string](image), nil
-			}
-		}
-	case "dex.gpu-ninja.com/v1alpha1":
-		if obj.GetKind() == "DexIdentityProvider" {
-			logger.Info("Found dex identity provider", zap.String("name", obj.GetName()))
-
-			image, _, _ := unstructured.NestedString(obj.Object, "spec", "image")
-			if image != "" {
-				return sets.New[string](image), nil
-			}
-		}
-	case "ldap.gpu-ninja.com/v1alpha1":
-		if obj.GetKind() == "LDAPDirectory" {
-			logger.Info("Found ldap directory", zap.String("name", obj.GetName()))
-
-			image, _, _ := unstructured.NestedString(obj.Object, "spec", "image")
-			if image != "" {
-				return sets.New[string](image), nil
-			}
-		}
-	}
-
-	return sets.New[string](), nil
-}
-
-func extractImagesFromPodSpec(spec *corev1.PodSpec) sets.Set[string] {
-	images := sets.New[string]()
-
-	for _, initContainer := range spec.InitContainers {
-		images.Insert(initContainer.Image)
-	}
-
-	for _, container := range spec.Containers {
-		images.Insert(container.Image)
-	}
-
-	return images
 }
