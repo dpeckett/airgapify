@@ -15,3 +15,9 @@ You can then load the image archive into Docker:
 ```shell
 docker load -i images.tar.zst
 ```
+
+## Configuration
+
+Airgapify will look in the manifests for a Config YAML resource. An example is provided in [examples/config.yaml](examples/config.yaml).
+
+The config resource allows you to specify additional images to include in the archive, and allows configuring image reference extraction for custom resources.

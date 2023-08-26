@@ -49,7 +49,7 @@ func main() {
 
 	app := &cli.App{
 		Name:  "airgapify",
-		Usage: "A tool that will construct airgapped image archives for a set of Kubernetes manifests.",
+		Usage: "A little tool that will construct a Docker image archive from a set of Kubernetes manifests.",
 		Flags: []cli.Flag{
 			&cli.StringSliceFlag{
 				Name:     "file",
