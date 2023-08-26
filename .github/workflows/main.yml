@@ -63,6 +63,7 @@ jobs:
         export GOOS=darwin GOARCH=arm64
         make
         tar --zstd -cf dist/airgapify-${GOOS}-${GOARCH}.tar.zst -C bin LICENSE airgapify
+
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
