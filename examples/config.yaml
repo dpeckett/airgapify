@@ -1,5 +1,7 @@
 apiVersion: airgapify.gpu-ninja.com/v1alpha1
 kind: Config
+metadata:
+  name: airgapify-config
 spec:
   rules:
   - apiVersion: ceph.rook.io/v1
