@@ -18,7 +18,6 @@
 package loader
 
 import (
-	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -31,13 +30,24 @@ func LoadObjectsFromFiles(filePaths []string) ([]unstructured.Unstructured, erro
 	var objects []unstructured.Unstructured
 
 	for _, filePath := range filePaths {
+		if filePath == "-" {
+			fileObjects, err := loadObjectsFromReader(os.Stdin)
+			if err != nil {
+				return nil, err
+			}
+
+			objects = append(objects, fileObjects...)
+
+			continue
+		}
+
 		fi, err := os.Stat(filePath)
 		if err != nil {
 			return nil, err
 		}
 
 		if !fi.IsDir() {
-			fileObjects, err := LoadObjectsFromYAML(filePath)
+			fileObjects, err := loadObjectsFromYAML(filePath)
 			if err != nil {
 				return nil, err
 			}
@@ -50,7 +60,7 @@ func LoadObjectsFromFiles(filePaths []string) ([]unstructured.Unstructured, erro
 				}
 
 				if !d.IsDir() {
-					fileObjects, err := LoadObjectsFromYAML(path)
+					fileObjects, err := loadObjectsFromYAML(path)
 					if err != nil {
 						return err
 					}
@@ -69,15 +79,20 @@ func LoadObjectsFromFiles(filePaths []string) ([]unstructured.Unstructured, erro
 	return objects, nil
 }
 
-func LoadObjectsFromYAML(yamlPath string) ([]unstructured.Unstructured, error) {
-	objectsYAML, err := os.ReadFile(yamlPath)
+func loadObjectsFromYAML(yamlPath string) ([]unstructured.Unstructured, error) {
+	f, err := os.Open(yamlPath)
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 
+	return loadObjectsFromReader(f)
+}
+
+func loadObjectsFromReader(reader io.Reader) ([]unstructured.Unstructured, error) {
 	var objects []unstructured.Unstructured
 
-	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(objectsYAML), 1000000)
+	decoder := yaml.NewYAMLOrJSONDecoder(reader, 1000000)
 	for {
 		var obj map[string]any
 		if err := decoder.Decode(&obj); err != nil {
