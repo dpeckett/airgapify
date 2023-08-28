@@ -18,7 +18,7 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.19
+        go-version: '^1.20.6'
 
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v3
@@ -40,11 +40,13 @@ jobs:
     - name: Check Out Repo
       uses: actions/checkout@v3
 
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '^1.20.6'
+
     - name: Build
       run: |
-        make generate
-        mv dist/airgapify.gpu-ninja.com_configs.yaml dist/crd.yaml
-        
         mkdir -p bin
         cp LICENSE bin/LICENSE
 
@@ -64,10 +66,13 @@ jobs:
         make
         tar --zstd -cf dist/airgapify-${GOOS}-${GOARCH}.tar.zst -C bin LICENSE airgapify
 
+        (cd dist; find . -type f -exec sha256sum {} \; >> ../checksums.txt)
+
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
           dist/*
+          checksums.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
