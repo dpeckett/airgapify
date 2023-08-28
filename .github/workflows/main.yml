@@ -23,7 +23,9 @@ jobs:
       run: earthly +lint
 
     - name: Build
-      run: earthly +airgapify
+      run: |
+        earthly +generate
+        earthly +airgapify
 
     - name: Test
       run: earthly +test
@@ -39,7 +41,9 @@ jobs:
         version: v0.7.15
 
     - name: Build
-      run: earthly +all
+      run: |
+        earthly +generate
+        earthly +all
 
     - name: Release
       uses: softprops/action-gh-release@v1
