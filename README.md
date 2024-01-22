@@ -1,10 +1,10 @@
 # airgapify
 
-A little tool that will construct a Docker image archive from a set of Kubernetes manifests.
+A little tool that will construct an OCI image archive from a set of Kubernetes manifests.
 
 ## Usage
 
-To create an image archive from a directory containing Kubernetes manifests:
+To create an OCI image archive from a directory containing Kubernetes manifests:
 
 ```shell
 airgapify -f manifests/ -o images.tar.zst

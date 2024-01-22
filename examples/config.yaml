@@ -1,4 +1,4 @@
-apiVersion: airgapify.gpu-ninja.com/v1alpha1
+apiVersion: airgapify.pecke.tt/v1alpha1
 kind: Config
 metadata:
   name: airgapify-config

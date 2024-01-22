@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * Copyright 2023 Damian Peckett <damian@pecke.tt>.
+ * Copyright 2024 Damian Peckett <damian@pecke.tt>.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -78,7 +78,7 @@ var DefaultRules = []ImageReferenceExtractionRule{
 	{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Config",
-			APIVersion: "airgapify.gpu-ninja.com/v1alpha1",
+			APIVersion: "airgapify.pecke.tt/v1alpha1",
 		},
 		Paths: []string{"$.spec.images[*]"},
 	},

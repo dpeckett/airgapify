@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * Copyright 2023 Damian Peckett <damian@pecke.tt>.
+ * Copyright 2024 Damian Peckett <damian@pecke.tt>.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ package loader_test
 import (
 	"testing"
 
-	"github.com/gpu-ninja/airgapify/internal/loader"
+	"github.com/dpeckett/airgapify/internal/loader"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

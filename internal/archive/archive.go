@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * Copyright 2023 Damian Peckett <damian@pecke.tt>.
+ * Copyright 2024 Damian Peckett <damian@pecke.tt>.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,16 +20,17 @@ package archive
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
 
-	"github.com/cheggaaa/pb/v3"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/google/go-containerregistry/pkg/v1/tarball"
-	"github.com/klauspost/compress/zstd"
-	"go.uber.org/zap"
+	"github.com/mholt/archiver/v3"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -38,9 +39,22 @@ type Options struct {
 	Platform        *v1.Platform
 }
 
-// Create creates a Docker image archive from a set of image references.
-func Create(ctx context.Context, logger *zap.Logger, outputPath string, images sets.Set[string], opts *Options) error {
-	refToImage := make(map[name.Reference]v1.Image)
+// Create creates an OCI image archive from a set of image references.
+func Create(ctx context.Context, logger *slog.Logger, outputPath string, images sets.Set[string], opts *Options) error {
+	ociLayoutDir, err := os.MkdirTemp("", "airgapify-archive-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary archive directory: %w", err)
+	}
+	defer os.RemoveAll(ociLayoutDir)
+
+	p, err := layout.FromPath(ociLayoutDir)
+	if err != nil {
+		p, err = layout.Write(ociLayoutDir, empty.Index)
+		if err != nil {
+			return fmt.Errorf("failed to create image archive: %w", err)
+		}
+	}
+
 	for image := range images {
 		options := []remote.Option{
 			remote.WithContext(ctx),
@@ -56,62 +70,45 @@ func Create(ctx context.Context, logger *zap.Logger, outputPath string, images s
 			return fmt.Errorf("failed to parse image reference %q: %w", image, err)
 		}
 
-		logger.Info("Fetching image", zap.String("image", image))
+		logger.Info("Fetching image", "image", image)
 
-		refToImage[ref], err = remote.Image(ref, options...)
+		img, err := remote.Image(ref, options...)
 		if err != nil {
 			return fmt.Errorf("failed to fetch image %q: %w", image, err)
 		}
+
+		layoutOpts := []layout.Option{
+			layout.WithAnnotations(map[string]string{
+				"org.opencontainers.image.ref.name": ref.String(),
+			}),
+		}
+
+		if opts.Platform != nil {
+			layoutOpts = append(layoutOpts, layout.WithPlatform(*opts.Platform))
+		}
+
+		if err = p.AppendImage(img, layoutOpts...); err != nil {
+			return fmt.Errorf("failed to create image archive: %w", err)
+		}
+
+		break
 	}
 
-	logger.Info("Writing image archive", zap.String("path", outputPath))
-
-	f, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create image archive: %w", err)
-	}
-	defer f.Close()
-
-	w, err := zstd.NewWriter(f)
-	if err != nil {
-		return fmt.Errorf("failed to create zstd writer: %w", err)
-	}
-	defer w.Close()
-
-	var progressCh chan v1.Update
-	if !opts.DisableProgress {
-		progressCh = progressBar()
+	format := archiver.TarZstd{
+		Tar: &archiver.Tar{
+			OverwriteExisting: true,
+		},
 	}
 
-	options := []tarball.WriteOption{
-		tarball.WithProgress(progressCh),
-	}
+	logger.Info("Writing image archive", "path", outputPath)
 
-	err = tarball.MultiRefWrite(refToImage, w, options...)
-	if progressCh != nil {
-		close(progressCh)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to write image archive: %w", err)
+	if err := format.Archive([]string{
+		filepath.Join(ociLayoutDir, "blobs"),
+		filepath.Join(ociLayoutDir, "index.json"),
+		filepath.Join(ociLayoutDir, "oci-layout"),
+	}, outputPath); err != nil {
+		return fmt.Errorf("failed to create oci image archive: %w", err)
 	}
 
 	return nil
-}
-
-func progressBar() chan v1.Update {
-	progressCh := make(chan v1.Update, 100)
-	go func() {
-		var bar *pb.ProgressBar
-		for update := range progressCh {
-			if bar == nil {
-				bar = pb.Start64(update.Total)
-			}
-			bar = bar.SetCurrent(update.Complete)
-		}
-		if bar != nil {
-			bar.Finish()
-		}
-	}()
-
-	return progressCh
 }

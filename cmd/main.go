@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * Copyright 2023 Damian Peckett <damian@pecke.tt>.
+ * Copyright 2024 Damian Peckett <damian@pecke.tt>.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,17 +19,15 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
+	airgapifyv1alpha1 "github.com/dpeckett/airgapify/api/v1alpha1"
+	"github.com/dpeckett/airgapify/internal/archive"
+	"github.com/dpeckett/airgapify/internal/extractor"
+	"github.com/dpeckett/airgapify/internal/loader"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	airgapifyv1alpha1 "github.com/gpu-ninja/airgapify/api/v1alpha1"
-	"github.com/gpu-ninja/airgapify/internal/archive"
-	"github.com/gpu-ninja/airgapify/internal/extractor"
-	"github.com/gpu-ninja/airgapify/internal/loader"
-	zaplogfmt "github.com/jsternberg/zap-logfmt"
 	"github.com/urfave/cli/v2"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 )
@@ -39,17 +37,18 @@ func init() {
 }
 
 func main() {
-	config := zap.NewProductionEncoderConfig()
-	logger := zap.New(zapcore.NewCore(
-		zaplogfmt.NewEncoder(config),
-		os.Stdout,
-		zap.NewAtomicLevelAt(zapcore.InfoLevel),
-	))
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	app := &cli.App{
 		Name:  "airgapify",
-		Usage: "A little tool that will construct a Docker image archive from a set of Kubernetes manifests.",
+		Usage: "A little tool that will construct an OCI image archive from a set of Kubernetes manifests.",
 		Flags: []cli.Flag{
+			&cli.GenericFlag{
+				Name:    "log-level",
+				Aliases: []string{"l"},
+				Usage:   "Set the log level",
+				Value:   fromLogLevel(slog.LevelInfo),
+			},
 			&cli.StringSliceFlag{
 				Name:     "file",
 				Aliases:  []string{"f"},
@@ -59,7 +58,7 @@ func main() {
 			&cli.StringFlag{
 				Name:    "output",
 				Aliases: []string{"o"},
-				Usage:   "Where to write the image archive.",
+				Usage:   "Where to write the oci image archive (will be a tar.zst archive).",
 				Value:   "images.tar.zst",
 			},
 			&cli.StringFlag{
@@ -72,18 +71,25 @@ func main() {
 				Usage: "Disable progress output.",
 			},
 		},
-		Action: func(cCtx *cli.Context) error {
-			objects, err := loader.LoadObjectsFromFiles(cCtx.StringSlice("file"))
+		Before: func(c *cli.Context) error {
+			logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+				Level: (*slog.Level)(c.Generic("log-level").(*logLevelFlag)),
+			}))
+
+			return nil
+		},
+		Action: func(c *cli.Context) error {
+			objects, err := loader.LoadObjectsFromFiles(c.StringSlice("file"))
 			if err != nil {
 				return fmt.Errorf("failed to load objects: %w", err)
 			}
 
-			logger.Info("Loaded objects", zap.Int("count", len(objects)))
+			logger.Info("Loaded objects", "count", len(objects))
 
 			rules := extractor.DefaultRules
 
 			for _, obj := range objects {
-				if obj.GetAPIVersion() == "airgapify.gpu-ninja.com/v1alpha1" && obj.GetKind() == "Config" {
+				if obj.GetAPIVersion() == "airgapify.pecke.tt/v1alpha1" && obj.GetKind() == "Config" {
 					logger.Info("Found airgapify config")
 
 					var config airgapifyv1alpha1.Config
@@ -108,25 +114,25 @@ func main() {
 			}
 
 			if images.Len() > 0 {
-				logger.Info("Found image references", zap.Int("count", images.Len()))
+				logger.Info("Found image references", "count", images.Len())
 			}
 
 			options := &archive.Options{}
 
-			if cCtx.IsSet("no-progress") && cCtx.Bool("no-progress") {
+			if c.IsSet("no-progress") && c.Bool("no-progress") {
 				options.DisableProgress = true
 			}
 
-			if cCtx.IsSet("platform") {
-				options.Platform, err = v1.ParsePlatform(cCtx.String("platform"))
+			if c.IsSet("platform") {
+				options.Platform, err = v1.ParsePlatform(c.String("platform"))
 				if err != nil {
 					return fmt.Errorf("failed to parse platform: %w", err)
 				}
 			}
 
-			outputPath := cCtx.String("output")
+			outputPath := c.String("output")
 
-			if err := archive.Create(cCtx.Context, logger, outputPath, images, options); err != nil {
+			if err := archive.Create(c.Context, logger, outputPath, images, options); err != nil {
 				return fmt.Errorf("failed to create image archive: %w", err)
 			}
 
@@ -135,6 +141,22 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		logger.Fatal("Failed to run application", zap.Error(err))
+		logger.Error("Failed to run application", "error", err)
+		os.Exit(1)
 	}
+}
+
+type logLevelFlag slog.Level
+
+func fromLogLevel(l slog.Level) *logLevelFlag {
+	f := logLevelFlag(l)
+	return &f
+}
+
+func (f *logLevelFlag) Set(value string) error {
+	return (*slog.Level)(f).UnmarshalText([]byte(value))
+}
+
+func (f *logLevelFlag) String() string {
+	return (*slog.Level)(f).String()
 }

@@ -1,12 +1,12 @@
 VERSION 0.7
-FROM golang:1.20-bookworm
+FROM golang:1.21-bookworm
 WORKDIR /app
 
 all:
-  COPY (+airgapify/airgapify --GOARCH=amd64) ./dist/airgapify-linux-amd64
-  COPY (+airgapify/airgapify --GOARCH=arm64) ./dist/airgapify-linux-arm64
-  COPY (+airgapify/airgapify --GOOS=darwin --GOARCH=amd64) ./dist/airgapify-darwin-amd64
-  COPY (+airgapify/airgapify --GOOS=darwin --GOARCH=arm64) ./dist/airgapify-darwin-arm64
+  COPY (+build/airgapify --GOARCH=amd64) ./dist/airgapify-linux-amd64
+  COPY (+build/airgapify --GOARCH=arm64) ./dist/airgapify-linux-arm64
+  COPY (+build/airgapify --GOOS=darwin --GOARCH=amd64) ./dist/airgapify-darwin-amd64
+  COPY (+build/airgapify --GOOS=darwin --GOARCH=arm64) ./dist/airgapify-darwin-arm64
   RUN cd dist && find . -type f -exec sha256sum {} \; >> ../checksums.txt
   SAVE ARTIFACT ./dist/airgapify-linux-amd64 AS LOCAL dist/airgapify-linux-amd64
   SAVE ARTIFACT ./dist/airgapify-linux-arm64 AS LOCAL dist/airgapify-linux-arm64
@@ -14,13 +14,13 @@ all:
   SAVE ARTIFACT ./dist/airgapify-darwin-arm64 AS LOCAL dist/airgapify-darwin-arm64
   SAVE ARTIFACT ./checksums.txt AS LOCAL dist/checksums.txt
 
-airgapify:
+build:
   ARG GOOS=linux
   ARG GOARCH=amd64
   COPY go.mod go.sum ./
   RUN go mod download
   COPY . .
-  RUN CGO_ENABLED=0 go build --ldflags '-s' -o airgapify cmd/airgapify/main.go
+  RUN CGO_ENABLED=0 go build --ldflags '-s' -o airgapify cmd/main.go
   SAVE ARTIFACT ./airgapify AS LOCAL dist/airgapify-${GOOS}-${GOARCH}
 
 generate:
@@ -30,7 +30,7 @@ generate:
   RUN controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 	RUN controller-gen crd output:crd:artifacts:config=dist paths="./api/..."
   SAVE ARTIFACT ./api/v1alpha1/zz_generated.deepcopy.go AS LOCAL api/v1alpha1/zz_generated.deepcopy.go
-  SAVE ARTIFACT ./dist/airgapify.gpu-ninja.com_configs.yaml AS LOCAL dist/airgapify.gpu-ninja.com_configs.yaml
+  SAVE ARTIFACT ./dist/airgapify.pecke.tt_configs.yaml AS LOCAL dist/airgapify.pecke.tt_configs.yaml
 
 tidy:
   LOCALLY
@@ -38,7 +38,7 @@ tidy:
   RUN go fmt ./...
 
 lint:
-  FROM golangci/golangci-lint:v1.54.2
+  FROM golangci/golangci-lint:v1.55.2
   WORKDIR /app
   COPY . ./
   RUN golangci-lint run --timeout 5m ./...
