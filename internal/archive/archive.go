@@ -90,8 +90,6 @@ func Create(ctx context.Context, logger *slog.Logger, outputPath string, images 
 		if err = p.AppendImage(img, layoutOpts...); err != nil {
 			return fmt.Errorf("failed to create image archive: %w", err)
 		}
-
-		break
 	}
 
 	format := archiver.TarZstd{
