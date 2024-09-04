@@ -105,8 +105,9 @@ func main() {
 	}
 
 	app := &cli.App{
-		Name:  "airgapify",
-		Usage: "A little tool that will construct an OCI image archive from a set of Kubernetes manifests.",
+		Name:    "airgapify",
+		Usage:   "A little tool that will construct an OCI image archive from a set of Kubernetes manifests.",
+		Version: constants.Version,
 		Flags: append([]cli.Flag{
 			&cli.StringSliceFlag{
 				Name:     "file",
