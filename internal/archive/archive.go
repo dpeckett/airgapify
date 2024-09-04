@@ -1,18 +1,19 @@
-/* SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-or-later
+/*
+ * Copyright (C) 2024 Damian Peckett <damian@pecke.tt>.
  *
- * Copyright 2024 Damian Peckett <damian@pecke.tt>.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
  *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package archive
@@ -24,23 +25,19 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dpeckett/archivefs/tarfs"
+	"github.com/dpeckett/uncompr"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/mholt/archiver/v3"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-type Options struct {
-	DisableProgress bool
-	Platform        *v1.Platform
-}
-
 // Create creates an OCI image archive from a set of image references.
-func Create(ctx context.Context, logger *slog.Logger, outputPath string, images sets.Set[string], opts *Options) error {
+func Create(ctx context.Context, outputPath string, images sets.String, platform *v1.Platform) error {
 	ociLayoutDir, err := os.MkdirTemp("", "airgapify-archive-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temporary archive directory: %w", err)
@@ -61,8 +58,8 @@ func Create(ctx context.Context, logger *slog.Logger, outputPath string, images 
 			remote.WithAuthFromKeychain(authn.DefaultKeychain),
 		}
 
-		if opts.Platform != nil {
-			options = append(options, remote.WithPlatform(*opts.Platform))
+		if platform != nil {
+			options = append(options, remote.WithPlatform(*platform))
 		}
 
 		ref, err := name.ParseReference(image)
@@ -70,7 +67,7 @@ func Create(ctx context.Context, logger *slog.Logger, outputPath string, images 
 			return fmt.Errorf("failed to parse image reference %q: %w", image, err)
 		}
 
-		logger.Info("Fetching image", "image", image)
+		slog.Info("Fetching image", "image", image)
 
 		img, err := remote.Image(ref, options...)
 		if err != nil {
@@ -83,8 +80,8 @@ func Create(ctx context.Context, logger *slog.Logger, outputPath string, images 
 			}),
 		}
 
-		if opts.Platform != nil {
-			layoutOpts = append(layoutOpts, layout.WithPlatform(*opts.Platform))
+		if platform != nil {
+			layoutOpts = append(layoutOpts, layout.WithPlatform(*platform))
 		}
 
 		if err = p.AppendImage(img, layoutOpts...); err != nil {
@@ -92,19 +89,22 @@ func Create(ctx context.Context, logger *slog.Logger, outputPath string, images 
 		}
 	}
 
-	format := archiver.TarZstd{
-		Tar: &archiver.Tar{
-			OverwriteExisting: true,
-		},
+	slog.Info("Writing image archive", "path", outputPath)
+
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
 	}
+	defer outputFile.Close()
 
-	logger.Info("Writing image archive", "path", outputPath)
+	// Optionally compress the output file based on the file extension.
+	w, err := uncompr.NewWriter(outputFile, filepath.Base(outputPath))
+	if err != nil {
+		return fmt.Errorf("failed to create compressor: %w", err)
+	}
+	defer w.Close()
 
-	if err := format.Archive([]string{
-		filepath.Join(ociLayoutDir, "blobs"),
-		filepath.Join(ociLayoutDir, "index.json"),
-		filepath.Join(ociLayoutDir, "oci-layout"),
-	}, outputPath); err != nil {
+	if err := tarfs.Create(w, os.DirFS(ociLayoutDir)); err != nil {
 		return fmt.Errorf("failed to create oci image archive: %w", err)
 	}
 

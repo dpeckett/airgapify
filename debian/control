@@ -1,0 +1,30 @@
+Source: airgapify
+Section: golang
+Priority: optional
+Maintainer: Damian Peckett <damian@pecke.tt>
+Uploaders: Damian Peckett <damian@pecke.tt>
+Rules-Requires-Root: no
+Build-Depends: debhelper-compat (= 13),
+               dh-sequence-golang,
+               golang-any,
+               golang-github-dpeckett-archivefs-dev,
+               golang-github-dpeckett-telemetry-dev,
+               golang-github-dpeckett-uncompr-dev,
+               golang-github-google-go-containerregistry-dev,
+               golang-github-stretchr-testify-dev,
+               golang-github-urfave-cli-v2-dev,
+               golang-k8s-apimachinery-dev
+Testsuite: autopkgtest-pkg-go
+Standards-Version: 4.6.2
+Vcs-Browser: https://github.com/dpeckett/airgapify
+Vcs-Git: https://github.com/dpeckett/airgapify.git
+Homepage: https://github.com/dpeckett/airgapify
+XS-Go-Import-Path: github.com/dpeckett/airgapify
+
+Package: airgapify
+Section: utils
+Architecture: any
+Depends: ${misc:Depends},
+         ${shlibs:Depends}
+Built-Using: ${misc:Built-Using}
+Description: A little tool that will construct an OCI image archive from a set of Kubernetes manifests. (program)

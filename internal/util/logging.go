@@ -16,15 +16,25 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// +kubebuilder:object:generate=true
-// +groupName=airgapify.pecke.tt
-package v1alpha1
+package util
 
 import (
-	"k8s.io/apimachinery/pkg/runtime/schema"
+	"log/slog"
+	"strings"
 )
 
-var (
-	// GroupVersion is group version used to register these objects
-	GroupVersion = schema.GroupVersion{Group: "airgapify.pecke.tt", Version: "v1alpha1"}
-)
+// LevelFlag is a urfave/cli compatible flag for setting the log verbosity level.
+type LevelFlag slog.Level
+
+func FromSlogLevel(l slog.Level) *LevelFlag {
+	f := LevelFlag(l)
+	return &f
+}
+
+func (f *LevelFlag) Set(value string) error {
+	return (*slog.Level)(f).UnmarshalText([]byte(strings.ToUpper(value)))
+}
+
+func (f *LevelFlag) String() string {
+	return (*slog.Level)(f).String()
+}

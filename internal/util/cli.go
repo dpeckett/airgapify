@@ -16,15 +16,21 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// +kubebuilder:object:generate=true
-// +groupName=airgapify.pecke.tt
-package v1alpha1
+package util
 
 import (
-	"k8s.io/apimachinery/pkg/runtime/schema"
+	"github.com/urfave/cli/v2"
 )
 
-var (
-	// GroupVersion is group version used to register these objects
-	GroupVersion = schema.GroupVersion{Group: "airgapify.pecke.tt", Version: "v1alpha1"}
-)
+// BeforeAll runs multiple BeforeFuncs in order
+func BeforeAll(fns ...cli.BeforeFunc) cli.BeforeFunc {
+	return func(c *cli.Context) error {
+		for _, fn := range fns {
+			if err := fn(c); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+}

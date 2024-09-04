@@ -16,15 +16,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// +kubebuilder:object:generate=true
-// +groupName=airgapify.pecke.tt
-package v1alpha1
-
-import (
-	"k8s.io/apimachinery/pkg/runtime/schema"
-)
+package constants
 
 var (
-	// GroupVersion is group version used to register these objects
-	GroupVersion = schema.GroupVersion{Group: "airgapify.pecke.tt", Version: "v1alpha1"}
+	// TelemetryURL is the URL to send anonymized telemetry data to.
+	TelemetryURL = "https://telemetry.pecke.tt"
+	Version      = "dev"
 )
