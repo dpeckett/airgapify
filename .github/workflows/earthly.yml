@@ -25,7 +25,9 @@ jobs:
       run: earthly +lint
 
     - name: Test
-      run: earthly +test
+      run: |
+        earthly +test
+        earthly +integration-test
   
   release:
     needs: build-and-test

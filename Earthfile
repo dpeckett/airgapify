@@ -56,6 +56,14 @@ test:
   RUN go test -coverprofile=coverage.out -v ./...
   SAVE ARTIFACT ./coverage.out AS LOCAL coverage.out
 
+integration-test:
+  RUN apt update
+  RUN apt install -y jq
+  COPY +build/airgapify ./airgapify
+  COPY testdata ./testdata
+  RUN ./airgapify -f testdata/prometheus.yaml
+  RUN [ "$(tar -xf images.tar -O index.json | jq '.manifests | length')" -eq 6 ] || exit 1
+
 package:
   FROM debian:bookworm
   # Use bookworm-backports for newer golang versions
